@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"log"
+	"errors"
+	stdlog "log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/biangacila/email-service/internal/application/services"
 	"github.com/biangacila/email-service/internal/infrastructure/cassandra"
@@ -13,23 +19,28 @@ import (
 	"github.com/biangacila/email-service/internal/migrations"
 	"github.com/biangacila/email-service/pkg/config"
 	"github.com/biangacila/email-service/pkg/logger"
-	"github.com/biangacila/luvungula-go/global"
 	"github.com/joho/godotenv"
 )
 
 func mustJSON(v any) []byte {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		stdlog.Printf("json marshal error: %v", err)
+		return []byte("{}")
+	}
 	return b
 }
 
 func parseInt(s string, def int) int {
+	if s == "" {
+		return def
+	}
 	n := 0
 	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		if ch < '0' || ch > '9' {
+		if s[i] < '0' || s[i] > '9' {
 			return def
 		}
-		n = n*10 + int(ch-'0')
+		n = n*10 + int(s[i]-'0')
 	}
 	if n <= 0 {
 		return def
@@ -38,37 +49,88 @@ func parseInt(s string, def int) int {
 }
 
 func main() {
-	// Load .env file
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("No .env file found, using system env")
+	// Load env
+	if err := godotenv.Load(); err != nil {
+		stdlog.Println("No .env file found, using system env")
 	}
 
 	cfg := config.Load("biatech-email-service")
-	global.DisplayObject("config", cfg)
-	resendSvg := resend.NewResendClient(cfg.ResendToken)
+
+	log := logger.New(cfg.ServiceName)
+
+	// Init infrastructure
+	resendClient := resend.NewResendClient(cfg.ResendToken)
 	repo := cassandra.NewCassandraRepo([]string{cfg.CassandraHosts})
 
-	// let do migration
-	log := logger.New(cfg.ServiceName)
+	// Cassandra bootstrap
 	rf := parseInt(config.Getenv("CASSANDRA_RF", "1"), 1)
-	if err := cassandra.BootstrapKeyspaceAndTables(cfg.CassandraHosts, cfg.CassandraKeyspace, rf, migrations.DDL); err != nil {
-		log.Fatalf("cassandra bootstrap: %v", err)
+	if err := cassandra.BootstrapKeyspaceAndTables(
+		cfg.CassandraHosts,
+		cfg.CassandraKeyspace,
+		rf,
+		migrations.DDL,
+	); err != nil {
+		log.Fatalf("cassandra bootstrap failed: %v", err)
 	}
 
-	service := services.NewEmailService(resendSvg, repo)
-	svcSms := services.NewSmsService(&cfg)
+	// Services
+	emailService := services.NewEmailService(resendClient, repo)
+	smsService := services.NewSmsService(&cfg)
 
-	go kafka.StartConsumer(service, cfg)
+	// Kafka consumer (with context)
+	_, cancel := context.WithCancel(context.Background())
+	go func() {
+		log.Println("Starting Kafka consumer...")
+		kafka.StartConsumer(emailService, cfg)
+	}()
 
+	// Handlers
 	handlerEmail := handlers.NewHandler(cfg)
-	handlerSms := handlers.NewSmsHandler(svcSms)
+	handlerSms := handlers.NewSmsHandler(smsService)
+
+	// Router (better than default mux)
+	mux := http.NewServeMux()
 
 	prefix := "/backend-email-service/api/v1"
 
-	http.HandleFunc(prefix+"/send-email", handlerEmail.SendEmail)
-	http.HandleFunc(prefix+"/send-sms/post", handlerSms.SendPost)
-	http.HandleFunc(prefix+"/send-sms/get", handlerSms.SendGet)
+	mux.HandleFunc(prefix+"/send-email", handlerEmail.SendEmail)
+	mux.HandleFunc(prefix+"/send-sms/post", handlerSms.SendPost)
+	mux.HandleFunc(prefix+"/send-sms/get", handlerSms.SendGet)
 
-	http.ListenAndServe(":"+cfg.HTTPPort, nil)
+	// HTTP Server with timeouts
+	server := &http.Server{
+		Addr:         ":" + cfg.HTTPPort,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Graceful shutdown
+	go func() {
+		log.Println("HTTP server running on port " + cfg.HTTPPort)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Stop Kafka
+	cancel()
+
+	// Shutdown HTTP server
+	ctxShutdown, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(ctxShutdown); err != nil {
+		log.Printf("server shutdown failed: %v", err)
+	}
+
+	log.Println("Server exited cleanly")
 }

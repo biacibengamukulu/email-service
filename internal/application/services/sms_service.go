@@ -33,6 +33,7 @@ func NewSmsService(config *config.Config) *SmsServiceImpl {
 }
 
 func (s *SmsServiceImpl) Send(phone string, message string) error {
+	//fmt.Println("-:) Sending SMS to: ", phone, " > ", message)
 	// Encode query params
 	params := url.Values{}
 	params.Add("number", phone) // e.g. +27831234567

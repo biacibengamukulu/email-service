@@ -22,3 +22,9 @@ curl -X POST "https://cloudcalls.easipath.com/backend-email-service/api/v1/send-
 -H "Content-Type: application/json" \
 -d '{"phone":"27684011702","message":"Welcome to our platform - Biacibenga sms service"}'
 
+Response: {"status":"sent successfully"}
+
+[API Send Sms Get]
+curl -X GET "https://cloudcalls.easipath.com/backend-email-service/api/v1/send-sms/get?phone=27684011702&message=Welcome%20to%20our%20platform%20-%20Biacibenga%20sms%20service%20GET%20Query%20string"
+
+Response: {"status":"sent successfully"}

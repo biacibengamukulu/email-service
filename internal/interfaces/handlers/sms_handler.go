@@ -8,7 +8,6 @@ import (
 	"github.com/biangacila/email-service/internal/application/dtos"
 	"github.com/biangacila/email-service/internal/application/services"
 	"github.com/biangacila/email-service/pkg/utils"
-	"github.com/biangacila/luvungula-go/global"
 )
 
 type SmsHandler interface {
@@ -20,12 +19,20 @@ type SmsHandlerImpl struct {
 }
 
 func NewSmsHandler(svc services.SmsService) *SmsHandlerImpl {
+
 	return &SmsHandlerImpl{
 		svc: svc,
 	}
 }
 
 func (h *SmsHandlerImpl) SendPost(w http.ResponseWriter, r *http.Request) {
+	// register custom validation
+	/*validate := validator.New()
+	err := validate.RegisterValidation("phone_number_za", utils.PhoneNumberZA)
+	if err != nil {
+		panic(err)
+	}*/
+
 	payload := dtos.SmsSendDto{}
 	// This will reject any fields that are not part of the DTO
 	decoder := json.NewDecoder(r.Body)
@@ -35,12 +42,11 @@ func (h *SmsHandlerImpl) SendPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	global.DisplayObject("SendPost - payload 1", payload)
 	if err := dtos.ValidateAnyWithAnyDto(payload, dtos.SmsSendDto{}); err != nil {
 		http.Error(w, utils.HttpResponseError(err), http.StatusBadRequest)
 		return
 	}
-	global.DisplayObject("SendPost - payload 1", payload)
+
 	err := h.svc.Send(payload.Phone, payload.Message)
 	if err != nil {
 		http.Error(w, utils.HttpResponseError(err), http.StatusInternalServerError)

@@ -4,7 +4,21 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/go-playground/validator/v10"
 )
+
+func PhoneNumberZA(fl validator.FieldLevel) bool {
+	phone := fl.Field().String()
+
+	// Accept:
+	// 27XXXXXXXXX
+	// 0XXXXXXXXX
+	// +27XXXXXXXXX
+
+	re := regexp.MustCompile(`^(?:\+27|27|0)[6-8][0-9]{8}$`)
+	return re.MatchString(phone)
+}
 
 // NormalizeSAPhone converts input into 27XXXXXXXXX format
 func NormalizeSAPhone(input string) (string, error) {

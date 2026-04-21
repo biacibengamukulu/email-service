@@ -3,6 +3,7 @@ package dtos
 import (
 	"encoding/json"
 
+	"github.com/biangacila/email-service/pkg/validation"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -29,6 +30,5 @@ func ToEntities[T any](entity any, t []T) []T {
 }
 func ValidateAnyWithAnyDto[T any](data any, t T) error {
 	newRec := ToEntity(data, t)
-	validate := validator.New()
-	return validate.Struct(newRec)
+	return validation.Validate.Struct(newRec)
 }
