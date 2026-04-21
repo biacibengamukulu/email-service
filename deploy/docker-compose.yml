@@ -1,0 +1,29 @@
+version: '3'
+
+services:
+  email-service:
+    image: 010309/email-service:latest
+    build:
+      context: ..
+      dockerfile: ./Dockerfile
+    container_name: email-service
+    environment:
+      - HTTP_PORT=8080
+      - ROUTE_PREFIX=/swalydelivery-delivery
+      - CASSANDRA_HOSTS=${CASSANDRA_HOSTS:-safer.easipath.com}
+      - CASSANDRA_KEYSPACE=swalydelivery_delivery
+      - CASSANDRA_RF=${CASSANDRA_RF:-1}
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-safer.easipath.com:9092}
+      - KAFKA_GROUP_ID=email-service-group
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - DROPBOX_REFRESH_TOKEN=RZl5bRBmyQwAAAAAAAAAAWGq2YnvpMF9BBFQvcVOwhwVMdPyPvNGnt9IOMetuAaT
+      - DROPBOX_APP_KEY=3ule8jkyytjyn8r
+      - DROPBOX_APP_SECRET=wb9u8llx79scam0
+      - RESEND_TOKEN=re_ejQczP36_JKDBvy8VBWKF3s76KVZYz2Gq
+      - SMS_GATEWAY_URL=https://sms01.umsg.co.za/xml/send
+      - SMS_GATEWAY_USERNAME=kzn_liquor_sa
+      - SMS_GATEWAY_PASSWORD=7dy6tY#D
+
+    ports:
+      - "8089:8080"
+

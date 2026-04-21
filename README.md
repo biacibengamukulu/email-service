@@ -33,7 +33,7 @@ const (
 type Email struct {
 	ID      string
 	From    string
-	To      []string
+	Receiver      []string
 	Subject string
 	HTML    string
 	Status  EmailStatus
@@ -123,7 +123,7 @@ func (r *ResendClient) Send(ctx context.Context, email domain.Email) error {
 
 	payload := map[string]interface{}{
 		"from":    email.From,
-		"to":      email.To,
+		"to":      email.Receiver,
 		"subject": email.Subject,
 		"html":    email.HTML,
 	}
@@ -213,7 +213,7 @@ func NewCassandraRepo(hosts []string) *CassandraRepo {
 
 func (r *CassandraRepo) Save(ctx context.Context, email domain.Email) error {
 	return r.session.Query(`INSERT INTO emails (id, to, subject, status, retries) VALUES (?, ?, ?, ?, ?)`,
-		email.ID, email.To, email.Subject, email.Status, email.Retries).Exec()
+		email.ID, email.Receiver, email.Subject, email.Status, email.Retries).Exec()
 }
 
 func (r *CassandraRepo) UpdateStatus(ctx context.Context, id string, status domain.EmailStatus, retries int) error {
